@@ -14,18 +14,18 @@ type responseStats struct {
 	statusCode int
 }
 
-type LogResponseWriter struct {
+type logResponseWriter struct {
 	http.ResponseWriter
-	Stats *responseStats
+	stats *responseStats
 }
 
-func (this LogResponseWriter) Write(responseBody []byte) (int, error) {
-	this.Stats.bodyBytes = len(responseBody)
+func (this logResponseWriter) Write(responseBody []byte) (int, error) {
+	this.stats.bodyBytes = len(responseBody)
 	return this.ResponseWriter.Write(responseBody)
 }
 
-func (this LogResponseWriter) WriteHeader(statusCode int) {
-	this.Stats.statusCode = statusCode
+func (this logResponseWriter) WriteHeader(statusCode int) {
+	this.stats.statusCode = statusCode
 	this.ResponseWriter.WriteHeader(statusCode)
 }
 
@@ -37,8 +37,8 @@ func (this AccessLogger) Handle(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 		stats := responseStats{0, 200}
-		logResponseWriter := LogResponseWriter{w, &stats}
-		handler(logResponseWriter, r)
+		logWriter := logResponseWriter{w, &stats}
+		handler(logWriter, r)
 		requestDuration := time.Now().Sub(startTime)
 		this.Logger.Println(formatAccessLog(r, time.Now(), stats, requestDuration, requestDuration, 0))
 	}
