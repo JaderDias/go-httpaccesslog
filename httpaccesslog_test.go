@@ -58,11 +58,10 @@ func delayedHandler(w http.ResponseWriter, r *http.Request) {
 
 func TestServeMux(t *testing.T) {
 	expectationChecker := &ExpectationChecker{t, ""}
-	log.SetFlags(0)
-	log.SetOutput(expectationChecker)
-	http.HandleFunc("/usage", Handler(usageHandler))
-	http.HandleFunc("/denied", Handler(deniedHandler))
-	http.HandleFunc("/delayed", Handler(delayedHandler))
+	accessLogger := AccessLogger{*log.New(expectationChecker, "", 0)}
+	http.HandleFunc("/usage", accessLogger.Handle(usageHandler))
+	http.HandleFunc("/denied", accessLogger.Handle(deniedHandler))
+	http.HandleFunc("/delayed", accessLogger.Handle(delayedHandler))
 	go http.ListenAndServe(":5000", nil)
 	expectationChecker.Expected = "127.0.0.1 - user [%s] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n"
 	http.Get("http://user:pass@localhost:5000/usage")
@@ -72,8 +71,9 @@ func TestServeMux(t *testing.T) {
 	http.Get("http://localhost:5000/delayed")
 }
 
-func TestHandler(t *testing.T) {
+func TestHandle(t *testing.T) {
 	expectationChecker := &ExpectationChecker{t, ""}
+	accessLogger := AccessLogger{*log.New(expectationChecker, "", 0)}
 	log.SetFlags(0)
 	log.SetOutput(expectationChecker)
 	tests := []struct {
@@ -138,7 +138,7 @@ func TestHandler(t *testing.T) {
 			request.Header["UserAgent"] = []string{tt.userAgent}
 		}
 		expectationChecker.Expected = tt.expected
-		Handler(tt.handler)(BlackHole{}, request)
+		accessLogger.Handle(tt.handler)(BlackHole{}, request)
 	}
 }
 

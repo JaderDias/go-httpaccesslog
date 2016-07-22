@@ -29,14 +29,18 @@ func (this LogResponseWriter) WriteHeader(statusCode int) {
 	this.ResponseWriter.WriteHeader(statusCode)
 }
 
-func Handler(handler http.HandlerFunc) http.HandlerFunc {
+type AccessLogger struct {
+	log.Logger
+}
+
+func (this AccessLogger) Handle(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 		stats := responseStats{0, 200}
 		logResponseWriter := LogResponseWriter{w, &stats}
 		handler(logResponseWriter, r)
 		requestDuration := time.Now().Sub(startTime)
-		log.Println(formatAccessLog(r, time.Now(), stats, requestDuration, requestDuration, 0))
+		this.Logger.Println(formatAccessLog(r, time.Now(), stats, requestDuration, requestDuration, 0))
 	}
 }
 
