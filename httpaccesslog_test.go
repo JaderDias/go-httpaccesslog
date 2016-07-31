@@ -8,32 +8,30 @@ import (
 	"time"
 )
 
-type ExpectationChecker struct {
-	t        *testing.T
-	Expected string
+type stringContainer struct {
+	string
 }
 
-func (this ExpectationChecker) Write(p []byte) (n int, err error) {
-	actual := string(p)
-	expected := fmt.Sprintf(this.Expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
-	if actual != expected {
-		this.t.Errorf("\nactual\n%s\nexpected\n%s", actual, expected)
-	}
+type byteWriter struct {
+	target *stringContainer
+}
 
+func (this byteWriter) Write(bytes []byte) (n int, err error) {
+	this.target.string += string(bytes)
+	return len(bytes), nil
+}
+
+type blackHole struct {
+}
+
+func (this blackHole) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-type BlackHole struct {
+func (this blackHole) WriteHeader(int) {
 }
 
-func (this BlackHole) Write(p []byte) (n int, err error) {
-	return len(p), nil
-}
-
-func (this BlackHole) WriteHeader(int) {
-}
-
-func (this BlackHole) Header() http.Header {
+func (this blackHole) Header() http.Header {
 	return nil
 }
 
@@ -57,25 +55,47 @@ func delayedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestServeMux(t *testing.T) {
-	expectationChecker := &ExpectationChecker{t, ""}
-	accessLogger := AccessLogger{*log.New(expectationChecker, "", 0)}
-	http.HandleFunc("/usage", accessLogger.Handle(usageHandler))
-	http.HandleFunc("/denied", accessLogger.Handle(deniedHandler))
-	http.HandleFunc("/delayed", accessLogger.Handle(delayedHandler))
+	target := &stringContainer{""}
+	logWriter := byteWriter{target}
+	accessLogger := AccessLogger{log.New(logWriter, "", 0)}
 	go http.ListenAndServe(":5000", nil)
-	expectationChecker.Expected = "127.0.0.1 - user [%s] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n"
-	http.Get("http://user:pass@localhost:5000/usage")
-	expectationChecker.Expected = "127.0.0.1 - - [%s] \"GET /denied HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"-\" - -\n"
-	http.Get("http://localhost:5000/denied")
-	expectationChecker.Expected = "127.0.0.1 - - [%s] \"GET /delayed HTTP/1.1\" 200 0 0.050/0.050 \"-\" \"-\" - -\n"
-	http.Get("http://localhost:5000/delayed")
+	tests := []struct {
+		path     string
+		handler  http.HandlerFunc
+		expected string
+	}{
+		{
+			"/usage",
+			usageHandler,
+			"127.0.0.1 - user [%s] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n",
+		},
+		{
+			"/denied",
+			deniedHandler,
+			"127.0.0.1 - user [%s] \"GET /denied HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"-\" - -\n",
+		},
+		{
+			"/delayed",
+			delayedHandler,
+			"127.0.0.1 - user [%s] \"GET /delayed HTTP/1.1\" 200 0 0.050/0.050 \"-\" \"-\" - -\n",
+		},
+	}
+	for _, tt := range tests {
+		*target = stringContainer{""}
+		http.HandleFunc(tt.path, accessLogger.Handle(tt.handler))
+		expected := fmt.Sprintf(tt.expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
+		http.Get("http://user:pass@localhost:5000" + tt.path)
+		actual := target.string
+		if actual != expected {
+			t.Errorf("\nactual\n%s\nexpected\n%s", actual, expected)
+		}
+	}
 }
 
 func TestHandle(t *testing.T) {
-	expectationChecker := &ExpectationChecker{t, ""}
-	accessLogger := AccessLogger{*log.New(expectationChecker, "", 0)}
-	log.SetFlags(0)
-	log.SetOutput(expectationChecker)
+	target := &stringContainer{""}
+	logWriter := byteWriter{target}
+	accessLogger := AccessLogger{log.New(logWriter, "", 0)}
 	tests := []struct {
 		remoteAddr string
 		username   string
@@ -137,8 +157,13 @@ func TestHandle(t *testing.T) {
 		if tt.userAgent != "" {
 			request.Header["UserAgent"] = []string{tt.userAgent}
 		}
-		expectationChecker.Expected = tt.expected
-		accessLogger.Handle(tt.handler)(BlackHole{}, request)
+		expected := fmt.Sprintf(tt.expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
+		*target = stringContainer{""}
+		accessLogger.Handle(tt.handler)(blackHole{}, request)
+		actual := target.string
+		if actual != expected {
+			t.Errorf("\nactual\n%s\nexpected\n%s", actual, expected)
+		}
 	}
 }
 

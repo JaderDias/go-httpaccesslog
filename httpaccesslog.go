@@ -30,7 +30,7 @@ func (this logResponseWriter) WriteHeader(statusCode int) {
 }
 
 type AccessLogger struct {
-	log.Logger
+	*log.Logger
 }
 
 func (this AccessLogger) Handle(handler http.HandlerFunc) http.HandlerFunc {
