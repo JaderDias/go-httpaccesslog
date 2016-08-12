@@ -54,16 +54,26 @@ func delayedHandler(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(50 * time.Millisecond)
 }
 
+func notFoundHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(404)
+}
+
 func TestServeMux(t *testing.T) {
 	target := &stringContainer{""}
 	logWriter := byteWriter{target}
 	accessLogger := AccessLogger{log.New(logWriter, "", 0)}
+	http.HandleFunc("/", accessLogger.Handle(notFoundHandler))
 	go http.ListenAndServe(":5000", nil)
 	tests := []struct {
 		path     string
 		handler  http.HandlerFunc
 		expected string
 	}{
+		{
+			"/NotFound",
+			nil,
+			"127.0.0.1 - user [%s] \"GET /NotFound HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
+		},
 		{
 			"/usage",
 			usageHandler,
@@ -82,7 +92,10 @@ func TestServeMux(t *testing.T) {
 	}
 	for _, tt := range tests {
 		*target = stringContainer{""}
-		http.HandleFunc(tt.path, accessLogger.Handle(tt.handler))
+		if tt.handler != nil {
+			http.HandleFunc(tt.path, accessLogger.Handle(tt.handler))
+		}
+
 		expected := fmt.Sprintf(tt.expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
 		http.Get("http://user:pass@localhost:5000" + tt.path)
 		actual := target.string
