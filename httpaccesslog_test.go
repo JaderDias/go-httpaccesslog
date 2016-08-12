@@ -80,6 +80,12 @@ func TestServeMux(t *testing.T) {
 			"127.0.0.1 - user [%s] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n",
 		},
 		{
+			"/usage/subpath",
+			nil,
+			// the higher level handler ("/", notFoundHandler) has precedence over ("/usage", usageHandler)
+			"127.0.0.1 - user [%s] \"GET /usage/subpath HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
+		},
+		{
 			"/denied",
 			deniedHandler,
 			"127.0.0.1 - user [%s] \"GET /denied HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"-\" - -\n",
