@@ -60,8 +60,9 @@ func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 
 func TestServeMux(t *testing.T) {
 	target := &stringContainer{""}
-	logWriter := byteWriter{target}
-	accessLogger := AccessLogger{log.New(logWriter, "", 0)}
+	log.SetOutput(byteWriter{target})
+	log.SetFlags(0)
+	accessLogger := AccessLogger{}
 	http.HandleFunc("/", accessLogger.Handle(notFoundHandler))
 	go http.ListenAndServe(":5000", nil)
 	tests := []struct {

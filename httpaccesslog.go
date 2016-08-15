@@ -40,7 +40,12 @@ func (this AccessLogger) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		logWriter := logResponseWriter{w, &stats}
 		handler(logWriter, r)
 		requestDuration := time.Now().Sub(startTime)
-		this.Logger.Println(formatAccessLog(r, time.Now(), stats, requestDuration, requestDuration, 0))
+		accessLog := formatAccessLog(r, time.Now(), stats, requestDuration, requestDuration, 0)
+		if this.Logger == nil {
+			log.Println(accessLog)
+		} else {
+			this.Logger.Println(accessLog)
+		}
 	}
 }
 
