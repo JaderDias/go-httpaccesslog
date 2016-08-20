@@ -1,7 +1,6 @@
 package httpaccesslog
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"testing"
@@ -58,11 +57,26 @@ func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(404)
 }
 
+type clockMock struct {
+	time.Time
+}
+
+func (this *clockMock) now() time.Time {
+	startTime := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+	if this.Time.IsZero() {
+		this.Time = time.Now()
+		return startTime
+	}
+
+	difference := time.Now().Sub(this.Time)
+	return startTime.Add(difference)
+}
+
 func TestServeMux(t *testing.T) {
 	target := &stringContainer{""}
 	log.SetOutput(byteWriter{target})
 	log.SetFlags(0)
-	accessLogger := AccessLogger{}
+	accessLogger := AccessLogger{nil, &clockMock{}}
 	http.HandleFunc("/", accessLogger.Handle(notFoundHandler))
 	go http.ListenAndServe(":5000", nil)
 	tests := []struct {
@@ -73,28 +87,28 @@ func TestServeMux(t *testing.T) {
 		{
 			"/NotFound",
 			nil,
-			"127.0.0.1 - user [%s] \"GET /NotFound HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
+			"127.0.0.1 - user [10/Nov/2009:23:00:00 +0000] \"GET /NotFound HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
 		},
 		{
 			"/usage",
 			usageHandler,
-			"127.0.0.1 - user [%s] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n",
+			"127.0.0.1 - user [10/Nov/2009:23:00:00 +0000] \"GET /usage HTTP/1.1\" 200 78 0.000/0.000 \"-\" \"-\" - -\n",
 		},
 		{
 			"/usage/subpath",
 			nil,
 			// the higher level handler ("/", notFoundHandler) has precedence over ("/usage", usageHandler)
-			"127.0.0.1 - user [%s] \"GET /usage/subpath HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
+			"127.0.0.1 - user [10/Nov/2009:23:00:00 +0000] \"GET /usage/subpath HTTP/1.1\" 404 0 0.000/0.000 \"-\" \"-\" - -\n",
 		},
 		{
 			"/denied",
 			deniedHandler,
-			"127.0.0.1 - user [%s] \"GET /denied HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"-\" - -\n",
+			"127.0.0.1 - user [10/Nov/2009:23:00:00 +0000] \"GET /denied HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"-\" - -\n",
 		},
 		{
 			"/delayed",
 			delayedHandler,
-			"127.0.0.1 - user [%s] \"GET /delayed HTTP/1.1\" 200 0 0.050/0.050 \"-\" \"-\" - -\n",
+			"127.0.0.1 - user [10/Nov/2009:23:00:00 +0000] \"GET /delayed HTTP/1.1\" 200 0 0.050/0.050 \"-\" \"-\" - -\n",
 		},
 	}
 	for _, tt := range tests {
@@ -103,11 +117,10 @@ func TestServeMux(t *testing.T) {
 			http.HandleFunc(tt.path, accessLogger.Handle(tt.handler))
 		}
 
-		expected := fmt.Sprintf(tt.expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
 		http.Get("http://user:pass@localhost:5000" + tt.path)
 		actual := target.string
-		if actual != expected {
-			t.Errorf("\nactual\n%s\nexpected\n%s", actual, expected)
+		if actual != tt.expected {
+			t.Errorf("\nactual\n%s\nexpected\n%s", actual, tt.expected)
 		}
 	}
 }
@@ -115,7 +128,7 @@ func TestServeMux(t *testing.T) {
 func TestHandle(t *testing.T) {
 	target := &stringContainer{""}
 	logWriter := byteWriter{target}
-	accessLogger := AccessLogger{log.New(logWriter, "", 0)}
+	accessLogger := AccessLogger{log.New(logWriter, "", 0), &clockMock{}}
 	tests := []struct {
 		remoteAddr string
 		username   string
@@ -136,7 +149,7 @@ func TestHandle(t *testing.T) {
 			"http://www.example.com/start.html",
 			"Mozilla/4.08 [en] (Win98; I ;Nav)",
 			usageHandler,
-			"127.0.0.1 - frank [%s] \"GET /apache_pb.gif HTTP/1.0\" 200 78 0.000/0.000 \"http://www.example.com/start.html\" \"Mozilla/4.08 [en] (Win98; I ;Nav)\" - -\n",
+			"127.0.0.1 - frank [10/Nov/2009:23:00:00 +0000] \"GET /apache_pb.gif HTTP/1.0\" 200 78 0.000/0.000 \"http://www.example.com/start.html\" \"Mozilla/4.08 [en] (Win98; I ;Nav)\" - -\n",
 		},
 		{
 			"10.1.2.254:4567",
@@ -147,7 +160,7 @@ func TestHandle(t *testing.T) {
 			"",
 			"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)",
 			deniedHandler,
-			"10.1.2.254 - - [%s] \"GET / HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)\" - -\n",
+			"10.1.2.254 - - [10/Nov/2009:23:00:00 +0000] \"GET / HTTP/1.1\" 401 0 0.000/0.000 \"-\" \"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)\" - -\n",
 		},
 		{
 			"10.1.2.254",
@@ -158,7 +171,7 @@ func TestHandle(t *testing.T) {
 			"https://github.com/",
 			"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)",
 			delayedHandler,
-			"10.1.2.254 - - [%s] \"GET /somepage HTTP/1.1\" 200 0 0.050/0.050 \"https://github.com/\" \"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)\" - -\n",
+			"10.1.2.254 - - [10/Nov/2009:23:00:00 +0000] \"GET /somepage HTTP/1.1\" 200 0 0.050/0.050 \"https://github.com/\" \"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko)\" - -\n",
 		},
 	}
 
@@ -177,12 +190,11 @@ func TestHandle(t *testing.T) {
 		if tt.userAgent != "" {
 			request.Header["UserAgent"] = []string{tt.userAgent}
 		}
-		expected := fmt.Sprintf(tt.expected, time.Now().Format("02/Jan/2006:15:04:05 -0700"))
 		*target = stringContainer{""}
 		accessLogger.Handle(tt.handler)(blackHole{}, request)
 		actual := target.string
-		if actual != expected {
-			t.Errorf("\nactual\n%s\nexpected\n%s", actual, expected)
+		if actual != tt.expected {
+			t.Errorf("\nactual\n%s\nexpected\n%s", actual, tt.expected)
 		}
 	}
 }
