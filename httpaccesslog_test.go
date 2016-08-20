@@ -3,6 +3,7 @@ package httpaccesslog
 import (
 	"log"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -70,6 +71,10 @@ func (this *clockMock) now() time.Time {
 
 	difference := time.Now().Sub(this.Time)
 	return startTime.Add(difference)
+}
+
+func TestConstructor(t *testing.T) {
+	New(os.Stdout)
 }
 
 func TestServeMux(t *testing.T) {

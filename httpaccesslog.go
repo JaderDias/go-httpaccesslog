@@ -2,6 +2,7 @@ package httpaccesslog
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -36,6 +37,11 @@ type clock interface {
 type AccessLogger struct {
 	*log.Logger
 	clock
+}
+
+func New(output io.Writer) AccessLogger {
+	logger := log.New(output, "", 0)
+	return AccessLogger{logger, nil}
 }
 
 func (this AccessLogger) now() time.Time {
