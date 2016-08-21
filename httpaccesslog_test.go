@@ -1,25 +1,13 @@
 package httpaccesslog
 
 import (
+	"bytes"
 	"log"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 )
-
-type stringContainer struct {
-	string
-}
-
-type byteWriter struct {
-	target *stringContainer
-}
-
-func (this byteWriter) Write(bytes []byte) (n int, err error) {
-	this.target.string += string(bytes)
-	return len(bytes), nil
-}
 
 type blackHole struct {
 }
@@ -78,8 +66,8 @@ func TestConstructor(t *testing.T) {
 }
 
 func TestServeMux(t *testing.T) {
-	target := &stringContainer{""}
-	log.SetOutput(byteWriter{target})
+	target := &bytes.Buffer{}
+	log.SetOutput(target)
 	log.SetFlags(0)
 	accessLogger := AccessLogger{nil, &clockMock{}}
 	http.HandleFunc("/", accessLogger.Handle(notFoundHandler))
@@ -117,13 +105,13 @@ func TestServeMux(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		*target = stringContainer{""}
+		target.Reset()
 		if tt.handler != nil {
 			http.HandleFunc(tt.path, accessLogger.Handle(tt.handler))
 		}
 
 		http.Get("http://user:pass@localhost:5000" + tt.path)
-		actual := target.string
+		actual := target.String()
 		if actual != tt.expected {
 			t.Errorf("\nactual\n%s\nexpected\n%s", actual, tt.expected)
 		}
@@ -131,9 +119,8 @@ func TestServeMux(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
-	target := &stringContainer{""}
-	logWriter := byteWriter{target}
-	accessLogger := AccessLogger{log.New(logWriter, "", 0), &clockMock{}}
+	target := &bytes.Buffer{}
+	accessLogger := AccessLogger{log.New(target, "", 0), &clockMock{}}
 	tests := []struct {
 		remoteAddr string
 		username   string
@@ -195,9 +182,9 @@ func TestHandle(t *testing.T) {
 		if tt.userAgent != "" {
 			request.Header["UserAgent"] = []string{tt.userAgent}
 		}
-		*target = stringContainer{""}
+		target.Reset()
 		accessLogger.Handle(tt.handler)(blackHole{}, request)
-		actual := target.string
+		actual := target.String()
 		if actual != tt.expected {
 			t.Errorf("\nactual\n%s\nexpected\n%s", actual, tt.expected)
 		}
